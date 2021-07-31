@@ -1,0 +1,40 @@
+apiVersion: terraform.core.oam.dev/v1beta1
+kind: Configuration
+metadata:
+  name: openstack-vm-3
+spec:
+  hcl: |
+    variable "image" {
+        type        = string
+      }
+      variable "flavor" {
+        type        = string
+      }
+      variable "network_name" {
+        type        = string
+      }
+
+    resource "openstack_compute_instance_v2" "my_instance" {
+      name            = "my_instance"
+      image_id      = "${var.image}"
+      flavor_id     = "${var.flavor}"
+      security_groups = ["default"]
+      network {
+        name = "${var.network_name}"
+      }
+    }
+    output "instance_id" {
+      value = "${openstack_compute_instance_v2.my_instance.id}"
+    }
+
+  variable:
+    image: ca696d11-4b57-4e4a-9971-9dbb618eec03
+    flavor: b3492d73-9ade-4138-9cc5-4759a2a92ec9
+    network_name: TestNET
+
+  writeConnectionSecretToRef:
+    name: instance-outputs
+    namespace: default
+
+  providerRef:
+    name: openstack
