@@ -13,25 +13,4 @@ spec:
   schematic:
     terraform:
       configuration: |
-        variable "image" {
-               type        = string
-             }
-             variable "flavor" {
-               type        = string
-             }
-             variable "network_name" {
-               type        = string
-             }
-
-           resource "openstack_compute_instance_v2" "my_instance" {
-             name            = "my_instance"
-             image_id      = "${var.image}"
-             flavor_id     = "${var.flavor}"
-             security_groups = ["default"]
-             network {
-               name = "${var.network_name}"
-             }
-           }
-           output "instance_id" {
-             value = "${openstack_compute_instance_v2.my_instance.id}"
-           }
+        "${var.hcl}"

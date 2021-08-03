@@ -1,15 +1,56 @@
 apiVersion: core.oam.dev/v1beta1
 kind: Application
 metadata:
-  name: openstack-kubevela-vm
+  name: sample-vm-new-5
 spec:
   components:
-    - name: sample-vm
+    - name: sample-vm-new-5
       type: openstack-vm
       properties:
+        hcl: |
+          variable "image" {
+                         type        = string
+                       }
+                       variable "flavor" {
+                         type        = string
+                       }
+                       variable "network_name" {
+                         type        = string
+                       }
+
+                     resource "openstack_compute_instance_v2" "test-new-vm" {
+                       name            = "my_instance"
+                       image_id      = "${var.image}"
+                       flavor_id     = "${var.flavor}"
+                       security_groups = ["default"]
+                       network {
+                         name = "${var.network_name}"
+                       }
+                     }
+                   variable "name" {
+                     type        = string
+                 }
+                 variable "size" {
+                     type        = number
+                 }
+
+                 resource "openstack_blockstorage_volume_v2" "volume_1" {
+                   name = "${var.name}"
+                   size = 3
+                 }
+
+                 resource "openstack_compute_volume_attach_v2" "va_1" {
+                   instance_id = "${openstack_compute_instance_v2.test-new-vm.id}"
+                   volume_id   = "${openstack_blockstorage_volume_v2.volume_1.id}"
+                 }
+                     output "instance_id" {
+                       value = "${openstack_compute_instance_v2.test-new-vm.id}"
+                     }
         image: ca696d11-4b57-4e4a-9971-9dbb618eec03
         flavor: b3492d73-9ade-4138-9cc5-4759a2a92ec9
         network_name: TestNET
+        name: test-new-vm
+        size: 3
         writeConnectionSecretToRef:
           name: instance-outputs
           namespace: default
