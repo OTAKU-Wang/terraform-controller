@@ -237,6 +237,12 @@ func (r *ConfigurationReconciler) terraformApply(ctx context.Context, namespace 
 func (r *ConfigurationReconciler) terraformDestroy(ctx context.Context, namespace string, configuration v1beta1.Configuration, destroyJobName, tfInputConfigMapsName, applyJobName string) error {
 	var destroyJob batchv1.Job
 	k8sClient := r.Client
+	if configuration.Status.State == state.Provisioning {
+		err := errors.New(MessageDestroyJobNotCompleted)
+		klog.ErrorS(err, "Hit an issue to Terraform delete job", "Name", destroyJobName, "state", state.Provisioning)
+		return err
+	}
+
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: destroyJobName, Namespace: controllerNamespace}, &destroyJob); err != nil {
 		if kerrors.IsNotFound(err) {
 			if err = assembleAndTriggerJob(ctx, k8sClient, configuration.Name, &configuration, tfInputConfigMapsName, namespace, r.ProviderName, TerraformDestroy); err != nil {
@@ -255,31 +261,47 @@ func (r *ConfigurationReconciler) terraformDestroy(ctx context.Context, namespac
 		return nil
 	}
 
-	// When the deletion Job process succeeded, clean up work is starting.
+	// When the deletion Job process succeeded , clean up work is starting.
 	if destroyJob.Status.Succeeded == *pointer.Int32Ptr(1) {
-		// 1. delete Terraform input Configuration ConfigMap
-		if err := deleteConfigMap(ctx, k8sClient, tfInputConfigMapsName); err != nil {
+		if err := destroyResource(ctx, k8sClient, destroyJob, tfInputConfigMapsName, applyJobName); err != nil {
 			return err
 		}
-
-		// 2. we don't manually delete Terraform state file Secret, as Terraform Kubernetes backend tends to keep the secret
-
-		// 3. delete apply job
-		var applyJob batchv1.Job
-		if err := k8sClient.Get(ctx, client.ObjectKey{Name: applyJobName, Namespace: controllerNamespace}, &applyJob); err == nil {
-			if err := k8sClient.Delete(ctx, &applyJob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
-				return err
-			}
-		}
-
-		// 4. delete destroy job
-		if err := k8sClient.Delete(ctx, &destroyJob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+		return nil
+	}
+	//When deletion Job failed and state is Unavailable, clean up work is starting
+	if destroyJob.Status.Failed == *pointer.Int32Ptr(1) && configuration.Status.State == state.Unavailable {
+		if err := destroyResource(ctx, k8sClient, destroyJob, tfInputConfigMapsName, applyJobName); err != nil {
 			return err
 		}
-
 		return nil
 	}
 	return errors.New(MessageDestroyJobNotCompleted)
+}
+
+//delete all create resource
+func destroyResource(ctx context.Context, k8sClient client.Client, destroyJob batchv1.Job, tfInputConfigMapsName, applyJobName string) error {
+	// 1. delete Terraform input Configuration ConfigMap
+	if err := deleteConfigMap(ctx, k8sClient, tfInputConfigMapsName); err != nil {
+		return err
+	}
+
+	// 2. we don't manually delete Terraform state file Secret, as Terraform Kubernetes backend tends to keep the secret
+
+	// 3. delete apply job
+	var applyJob batchv1.Job
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: applyJobName, Namespace: controllerNamespace}, &applyJob); err == nil {
+		if err := k8sClient.Delete(ctx, &applyJob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+			return err
+		}
+	}
+
+	// 4. delete destroy job
+	if &destroyJob != nil {
+		if err := k8sClient.Delete(ctx, &destroyJob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func assembleAndTriggerJob(ctx context.Context, k8sClient client.Client, name string, configuration *v1beta1.Configuration,
