@@ -182,6 +182,21 @@ func (r *ConfigurationReconciler) terraformApply(ctx context.Context, namespace 
 			}
 			return nil
 		}
+		if gotJob.Status.Failed == *pointer.Int32Ptr(1) {
+			outputs, err := getTFOutputs(ctx, k8sClient, configuration)
+			if err != nil {
+				return err
+			}
+			if configuration.Status.State != state.Unavailable {
+				configuration.Status.State = state.Unavailable
+				configuration.Status.Message = fmt.Sprintf("The state of cloud resources is unavailable due to job failed")
+				configuration.Status.Outputs = outputs
+				if err := k8sClient.Status().Update(ctx, &configuration); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		return errors.New(MessageApplyJobNotCompleted)
 	}
 
